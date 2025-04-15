@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .video-container {
+            margin-top: 20px;
+        }
+        video {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+        .test-controls {
+            margin-top: 20px;
+        }
+        input {
+            padding: 8px;
+            width: 70%;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .server-status {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f3f4f6;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Testing</h1>
+
+    <div class="server-status">
+        <h3>Server Status</h3>
+        <div id="main-server-status">Main Server (5001): Checking...</div>
+        <div id="test-server-status">Test Server (5002): Checking...</div>
+    </div>
+
+    <div class="test-controls">
+        <h3>Test Video URL</h3>
+        <input type="text" id="video-url" placeholder="Enter video URL or just the filename" 
+               value="video-1742567346977-447617064.mp4">
+        <button onclick="testVideo()">Test</button>
+    </div>
+
+    <div class="video-container">
+        <h3>Video Preview</h3>
+        <video id="test-video" controls>
+            <source id="video-source" src="" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <div id="video-error" style="color: red; margin-top: 10px; display: none;"></div>
+    </div>
+
+    <div class="video-container">
+        <h3>Available Videos</h3>
+        <div id="videos-list">Loading...</div>
+    </div>
+
+    <script>
+        // Check server status
+        async function checkServer(url, elementId) {
+            try {
+                const response = await fetch(url, { method: 'HEAD', timeout: 2000 });
+                document.getElementById(elementId).innerHTML = 
+                    `${elementId === 'main-server-status' ? 'Main Server (5001)' : 'Test Server (5002)'}: 
+                    <span style="color: green;">Running</span>`;
+            } catch (error) {
+                document.getElementById(elementId).innerHTML = 
+                    `${elementId === 'main-server-status' ? 'Main Server (5001)' : 'Test Server (5002)'}: 
+                    <span style="color: red;">Not available</span>`;
+            }
+        }
+
+        // Test a video URL
+        function testVideo() {
+            const videoUrl = document.getElementById('video-url').value;
+            const videoError = document.getElementById('video-error');
+            videoError.style.display = 'none';
+            
+            let fullUrl;
+            if (videoUrl.startsWith('http')) {
+                fullUrl = videoUrl;
+            } else if (videoUrl.includes('/')) {
+                fullUrl = `http://localhost:5001/${videoUrl.startsWith('uploads/') ? '' : 'uploads/'}${videoUrl}`;
+            } else {
+                fullUrl = `http://localhost:5001/uploads/videos/${videoUrl}`;
+            }
+            
+            const videoSource = document.getElementById('video-source');
+            videoSource.src = fullUrl;
+            
+            const video = document.getElementById('test-video');
+            video.load();
+            
+            // Handle video error
+            video.onerror = function() {
+                videoError.innerHTML = `Error loading video from ${fullUrl}. Trying backup server...`;
+                videoError.style.display = 'block';
+                
+                // Try the test server
+                if (fullUrl.includes('5001')) {
+                    const backupUrl = fullUrl.replace('5001', '5002');
+                    videoSource.src = backupUrl;
+                    video.load();
+                    
+                    // Handle error on backup server
+                    video.onerror = function() {
+                        videoError.innerHTML = `Error loading video from both servers. Please check the file exists.`;
+                    };
+                }
+            };
+        }
+
+        // Get list of available videos
+        async function getVideosList() {
+            try {
+                const response = await fetch('http://localhost:5002/api/list-videos');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.videos && data.videos.length > 0) {
+                        const videosHtml = data.videos.map(video => {
+                            return `
+                                <div style="margin-bottom: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <strong>${video}</strong>
+                                    <div>
+                                        <button onclick="document.getElementById('video-url').value='${video}'; testVideo()">
+                                            Test this video
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                        document.getElementById('videos-list').innerHTML = videosHtml;
+                    } else {
+                        document.getElementById('videos-list').innerHTML = 'No videos found.';
+                    }
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                document.getElementById('videos-list').innerHTML = 
+                    'Error fetching videos list. Make sure the test server is running.';
+            }
+        }
+
+        // Initialize
+        checkServer('http://localhost:5001', 'main-server-status');
+        checkServer('http://localhost:5002', 'test-server-status');
+        getVideosList();
+        setTimeout(testVideo, 500); // Auto test with default value
+    </script>
+</body>
+</html> 

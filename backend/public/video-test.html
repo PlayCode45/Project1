@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Playback Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .video-container {
+            margin: 20px 0;
+        }
+        video {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+        #video-list {
+            margin-top: 20px;
+        }
+        .video-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4f46e5;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        .debug-info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Playback Test</h1>
+    
+    <div class="video-container">
+        <h2>Current Video</h2>
+        <video id="video-player" controls width="100%">
+            <source src="" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <div id="video-error" style="color: red; margin-top: 10px;"></div>
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <button onclick="createTestVideo()" style="padding: 10px 20px; font-size: 16px;">Create Test Video</button>
+        <span id="create-result" style="margin-left: 10px;"></span>
+    </div>
+    
+    <div id="video-list">
+        <h2>Available Videos</h2>
+        <div id="videos-container">Loading...</div>
+    </div>
+    
+    <div class="debug-info" id="debug-info">
+        Checking server status...
+    </div>
+    
+    <script>
+        // Debug logging
+        const debugLog = document.getElementById('debug-info');
+        function log(message) {
+            const timestamp = new Date().toISOString().substr(11, 8);
+            debugLog.textContent += `[${timestamp}] ${message}\n`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+            console.log(message);
+        }
+        
+        // Check server status
+        async function checkServer() {
+            try {
+                log('Checking server status...');
+                const response = await fetch('http://localhost:5001/api/test');
+                const data = await response.json();
+                log(`Server status: ${data.message} (${data.timestamp})`);
+                return true;
+            } catch (err) {
+                log(`Server error: ${err.message}`);
+                return false;
+            }
+        }
+        
+        // Get list of videos
+        async function getVideos() {
+            try {
+                log('Fetching video list...');
+                const response = await fetch('http://localhost:5001/api/videos');
+                const data = await response.json();
+                
+                if (!data.videos || data.videos.length === 0) {
+                    log('No videos found on server');
+                    document.getElementById('videos-container').innerHTML = 'No videos available.';
+                    return;
+                }
+                
+                log(`Found ${data.videos.length} videos`);
+                
+                // Display videos
+                const container = document.getElementById('videos-container');
+                container.innerHTML = '';
+                
+                data.videos.forEach(video => {
+                    const videoItem = document.createElement('div');
+                    videoItem.className = 'video-item';
+                    
+                    videoItem.innerHTML = `
+                        <div><strong>${video.filename}</strong></div>
+                        <div>
+                            <button onclick="playVideo('${video.url}')">Play via Endpoint</button>
+                            <button onclick="playVideo('${video.directUrl}')">Play Direct URL</button>
+                        </div>
+                    `;
+                    
+                    container.appendChild(videoItem);
+                });
+                
+                // Auto-play the first video
+                if (data.videos.length > 0) {
+                    playVideo(data.videos[0].url);
+                }
+                
+            } catch (err) {
+                log(`Error fetching videos: ${err.message}`);
+                document.getElementById('videos-container').innerHTML = 
+                    'Error loading videos. Make sure the server is running.';
+            }
+        }
+        
+        // Play a video
+        function playVideo(url) {
+            log(`Attempting to play video: ${url}`);
+            
+            const videoPlayer = document.getElementById('video-player');
+            const videoError = document.getElementById('video-error');
+            videoError.textContent = '';
+            
+            videoPlayer.querySelector('source').src = url;
+            videoPlayer.load();
+            
+            videoPlayer.onerror = function(e) {
+                log(`Video error: ${videoPlayer.error.code} - ${videoPlayer.error.message}`);
+                videoError.textContent = `Error playing video: ${videoPlayer.error.message || 'Unknown error'}`;
+            };
+            
+            videoPlayer.onloadeddata = function() {
+                log('Video loaded successfully');
+            };
+            
+            videoPlayer.play().catch(err => {
+                log(`Play error: ${err.message}`);
+            });
+        }
+        
+        // Create a test video
+        async function createTestVideo() {
+            try {
+                log('Creating test video file...');
+                document.getElementById('create-result').textContent = 'Creating...';
+                
+                const response = await fetch('http://localhost:5001/api/upload-test-video', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`Test video created: ${data.filename}`);
+                    document.getElementById('create-result').textContent = 'Created successfully!';
+                    document.getElementById('create-result').style.color = 'green';
+                    
+                    // Refresh video list
+                    await getVideos();
+                    
+                    // Play the new video
+                    playVideo(data.url);
+                } else {
+                    log(`Error creating test video: ${data.error}`);
+                    document.getElementById('create-result').textContent = `Error: ${data.error}`;
+                    document.getElementById('create-result').style.color = 'red';
+                }
+            } catch (err) {
+                log(`Error creating test video: ${err.message}`);
+                document.getElementById('create-result').textContent = `Error: ${err.message}`;
+                document.getElementById('create-result').style.color = 'red';
+            }
+        }
+        
+        // Run on page load
+        window.onload = async function() {
+            const serverRunning = await checkServer();
+            if (serverRunning) {
+                getVideos();
+            } else {
+                document.getElementById('videos-container').innerHTML = 
+                    'Server is not running. Please start the server.';
+            }
+        };
+    </script>
+</body>
+</html> 
